@@ -47,9 +47,10 @@ class BasicPDFParser:
             logger.debug("PDF reader initialized")
             
             # Extract metadata
+            metadata_info = pdf_reader.metadata or {}
             self.metadata = {
                 'num_pages': len(pdf_reader.pages),
-                'metadata': pdf_reader.metadata,
+                'metadata': metadata_info,
                 'timestamp': datetime.now().isoformat(),
                 'parser': 'basic_pdf_parser'
             }
@@ -73,7 +74,33 @@ class BasicPDFParser:
             # Generate timestamp for both text and images
             timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             output_filename = f"{base_path}/basic_extracted_{timestamp}.txt"
-            logger.info(f"Will save output to: {output_filename}")
+            markdown_filename = f"{base_path}/basic_extracted_{timestamp}.md"
+            logger.info(f"Will save output to: {output_filename} and {markdown_filename}")
+            
+            # Prepare markdown content
+            pdf_name = metadata_info.get('/Title', 'Unnamed Document')
+            if not pdf_name or pdf_name == '':
+                # Try to get filename from the stream if title is not available
+                if hasattr(pdf_stream, 'name'):
+                    pdf_name = pdf_stream.name
+                else:
+                    pdf_name = f"Document extracted on {timestamp}"
+            
+            author = metadata_info.get('/Author', 'Unknown Author')
+            creation_date = metadata_info.get('/CreationDate', '')
+            
+            markdown_content = f"""# {pdf_name}
+
+## Document Information
+- **Author**: {author}
+- **Creation Date**: {creation_date}
+- **Pages**: {len(pdf_reader.pages)}
+- **Extracted On**: {timestamp}
+- **Parser**: Basic PDF Parser
+
+## Content
+
+"""
             
             # Upload text to S3
             try:
@@ -86,6 +113,7 @@ class BasicPDFParser:
                 raise
             
             # Extract and upload images using PyMuPDF
+            image_urls = []
             try:
                 logger.info("Starting image extraction with PyMuPDF")
                 pdf_stream.seek(0)  # Reset stream position
@@ -96,6 +124,20 @@ class BasicPDFParser:
                     page = pdf_document[page_num]
                     image_list = page.get_images()
                     
+                    # Add page content to markdown
+                    markdown_content += f"### Page {page_num + 1}\n\n"
+                    
+                    # Extract page text for markdown
+                    try:
+                        page_text = pdf_reader.pages[page_num].extract_text()
+                        # Format the text with proper newlines
+                        page_text = page_text.replace('\n', '\n\n')
+                        markdown_content += f"{page_text}\n\n"
+                    except Exception as text_err:
+                        markdown_content += f"Error extracting text for this page: {str(text_err)}\n\n"
+                    
+                    # Process images for this page
+                    page_images = []
                     for img_index, img in enumerate(image_list):
                         try:
                             xref = img[0]
@@ -105,22 +147,55 @@ class BasicPDFParser:
                             # Generate image filename with timestamp
                             image_filename = f"{base_path}/images/basic_{timestamp}/image_{page_num + 1}_{img_index + 1}.png"
                             
+                            # Generate S3 URL for the image
+                            s3_url = f"https://{s3_obj.bucket_name}.s3.amazonaws.com/{image_filename}"
+                            
                             # Upload image to S3
                             if s3_obj.upload_binary(image_bytes, image_filename):
                                 image_count += 1
                                 logger.debug(f"Successfully uploaded image {image_count} to {image_filename}")
+                                page_images.append((image_filename, s3_url))
+                                image_urls.append((image_filename, s3_url))
                             else:
                                 logger.warning(f"Failed to upload image {image_count} to {image_filename}")
                                 
                         except Exception as img_err:
                             logger.error(f"Error processing image {img_index + 1} on page {page_num + 1}: {str(img_err)}")
+                    
+                    # Add page images to markdown
+                    if page_images:
+                        markdown_content += "#### Images\n\n"
+                        for img_path, img_url in page_images:
+                            img_name = img_path.split('/')[-1]
+                            markdown_content += f"![{img_name}]({img_url})\n\n"
                 
                 logger.info(f"Successfully extracted and uploaded {image_count} images")
                 self.metadata['image_count'] = image_count
                 
+                # Add image gallery at the end if there are any images
+                if image_urls:
+                    markdown_content += "## Image Gallery\n\n"
+                    for img_path, img_url in image_urls:
+                        img_name = img_path.split('/')[-1]
+                        markdown_content += f"![{img_name}]({img_url})\n\n"
+                
             except Exception as e:
                 logger.error(f"Error in image extraction: {str(e)}")
                 # Continue with text extraction even if image extraction fails
+            
+            # Upload markdown to S3
+            try:
+                logger.info("Uploading markdown content to S3")
+                if not s3_obj.upload_text(markdown_content, markdown_filename):
+                    raise Exception("Failed to upload markdown content to S3")
+                logger.info(f"Successfully uploaded markdown to {markdown_filename}")
+                
+                # Add the markdown file path to metadata
+                self.metadata['markdown_file'] = markdown_filename
+                
+            except Exception as e:
+                logger.error(f"Error uploading markdown to S3: {str(e)}")
+                # Continue even if markdown upload fails
             
             return output_filename, self.metadata
             

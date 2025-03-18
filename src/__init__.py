@@ -1,3 +1,3 @@
 """
-NVIDIA RAG Pipeline source code.
+NVIDIA RAG Pipeline source package.
 """ 

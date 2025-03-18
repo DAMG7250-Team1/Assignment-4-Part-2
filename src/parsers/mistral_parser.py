@@ -3,11 +3,10 @@ import io
 import json
 import logging
 import time
-from typing import Dict, Tuple, Any, Callable
+from typing import Dict, Tuple, Any
 from datetime import datetime
 from dotenv import load_dotenv
 from mistralai import Mistral
-from mistralai import DocumentURLChunk, TextChunk
 from src.data.storage.s3_handler import S3FileManager
 
 class MistralPDFParser:
@@ -25,9 +24,7 @@ class MistralPDFParser:
             raise ValueError("MISTRAL_API_KEY not found in environment variables. Please add it to your .env file")
         
         self.client = None
-        self.timeout = 300  # 5 minutes timeout for operations
-        self.max_retries = 5  # Maximum number of retries for rate-limited requests
-        self.base_delay = 1  # Base delay in seconds for exponential backoff
+        self.ocr_model = "mistral-ocr-latest"
 
     def _initialize_client(self):
         """Initialize Mistral client with API key from environment."""
@@ -40,34 +37,9 @@ class MistralPDFParser:
             self.logger.error(f"Failed to initialize Mistral client: {str(e)}")
             raise
 
-    def _handle_rate_limit(self, func: Callable, *args, **kwargs) -> Any:
-        """
-        Execute a function with rate limit handling and exponential backoff.
-        
-        Args:
-            func: Function to execute
-            *args: Positional arguments for the function
-            **kwargs: Keyword arguments for the function
-            
-        Returns:
-            Any: Result of the function call
-        """
-        retries = 0
-        while retries <= self.max_retries:
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                if "429" in str(e) and retries < self.max_retries:
-                    delay = self.base_delay * (2 ** retries)  # Exponential backoff
-                    retries += 1
-                    self.logger.warning(f"Rate limit hit. Retrying in {delay} seconds... (Attempt {retries}/{self.max_retries})")
-                    time.sleep(delay)
-                else:
-                    raise
-
     def extract_text_from_pdf(self, pdf_stream: io.BytesIO, base_path: str, s3_obj: S3FileManager) -> Tuple[str, Dict]:
         """
-        Extract text from PDF using Mistral's OCR API.
+        Extract text from PDF using Mistral's OCR API with a simpler, direct approach.
         
         Args:
             pdf_stream: BytesIO stream of the PDF file
@@ -77,128 +49,78 @@ class MistralPDFParser:
         Returns:
             Tuple[str, Dict]: Path where content is stored and metadata dictionary
         """
-        start_total = time.time()
+        start_time = time.time()
+        
         try:
             self.logger.info("Starting PDF extraction with Mistral OCR...")
             self._initialize_client()
             
-            # Upload PDF to Mistral with rate limit handling
+            # Step 1: Upload the PDF file to Mistral's servers
             self.logger.info("Uploading PDF to Mistral...")
-            start_time = time.time()
-            try:
-                uploaded_file = self._handle_rate_limit(
-                    self.client.files.upload,
-                    file={
-                        "file_name": "document.pdf",
-                        "content": pdf_stream.read(),
-                    },
-                    purpose="ocr"
-                )
-                self.logger.info(f"PDF uploaded successfully in {time.time() - start_time:.2f} seconds")
-            except Exception as e:
-                self.logger.error(f"Failed to upload PDF to Mistral: {str(e)}")
-                raise
+            uploaded_file = self.client.files.upload(
+                file={
+                    "file_name": "document.pdf",
+                    "content": pdf_stream.read()
+                },
+                purpose="ocr"
+            )
             
-            # Get signed URL for processing
+            # Step 2: Get a signed URL for the file
             self.logger.info("Getting signed URL...")
-            try:
-                signed_url = self._handle_rate_limit(
-                    self.client.files.get_signed_url,
-                    file_id=uploaded_file.id
-                )
-                self.logger.info("Signed URL obtained successfully")
-            except Exception as e:
-                self.logger.error(f"Failed to get signed URL: {str(e)}")
-                raise
+            signed_url = self.client.files.get_signed_url(file_id=uploaded_file.id)
             
-            # Process document with OCR
+            # Step 3: Process the PDF with OCR
             self.logger.info("Processing document with OCR...")
-            start_time = time.time()
-            try:
-                ocr_response = self._handle_rate_limit(
-                    self.client.ocr.process,
-                    model="mistral-ocr-latest",
-                    document=DocumentURLChunk(document_url=signed_url.url),
-                    include_image_base64=True
-                )
-                self.logger.info(f"OCR processing completed in {time.time() - start_time:.2f} seconds")
-            except Exception as e:
-                self.logger.error(f"Failed to process document with OCR: {str(e)}")
-                raise
+            ocr_response = self.client.ocr.process(
+                model=self.ocr_model,
+                document={
+                    "type": "document_url",
+                    "document_url": signed_url.url
+                }
+            )
             
-            # Check timeout
-            if time.time() - start_total > self.timeout:
-                raise TimeoutError("OCR processing exceeded timeout limit")
-            
-            # Extract text and process with chat model for structured output
-            self.logger.info("Processing OCR results...")
-            all_text = []
+            # Step 4: Format the OCR results into markdown
+            self.logger.info("Formatting OCR results...")
+            page_count = len(ocr_response.pages)
             table_count = 0
             
-            for page in ocr_response.pages:
+            markdown_content = f"""# Document OCR by Mistral
+            
+## Document Information
+- **Processed On**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+- **Parser**: Mistral OCR Parser
+- **Page Count**: {page_count}
+- **Processing Time**: {time.time() - start_time:.2f} seconds
+
+## Content
+
+"""
+            
+            # Add each page's content to the markdown
+            for i, page in enumerate(ocr_response.pages):
                 page_text = page.markdown
-                all_text.append(page_text)
                 table_count += page_text.count('|---')
+                markdown_content += f"### Page {i+1}\n{page_text}\n\n"
             
-            combined_text = "\n\n".join(all_text)
-            
-            # Use chat model to structure the output with rate limit handling
-            self.logger.info("Structuring output with chat model...")
-            start_time = time.time()
-            try:
-                chat_response = self._handle_rate_limit(
-                    self.client.chat.complete,
-                    model="mistral-large-latest",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                TextChunk(text=f"The OCR in markdown:\n<BEGIN_OCR>\n{combined_text}\n<END_OCR>.\nConvert this into a structured JSON response with sections for text content, tables, and any numerical data found. The output should be strictly JSON with no extra commentary.")
-                            ],
-                        }
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0
-                )
-                self.logger.info(f"Chat model processing completed in {time.time() - start_time:.2f} seconds")
-            except Exception as e:
-                self.logger.error(f"Failed to structure output with chat model: {str(e)}")
-                raise
-            
-            # Check timeout
-            if time.time() - start_total > self.timeout:
-                raise TimeoutError("Total processing exceeded timeout limit")
-            
-            # Parse structured response
-            try:
-                structured_content = json.loads(chat_response.choices[0].message.content)
-            except Exception as e:
-                self.logger.error(f"Failed to parse chat model response: {str(e)}")
-                raise
-            
-            # Generate output path and filename
+            # Step 5: Save the results to S3
             timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            output_filename = f"mistral_ocr_{timestamp}.json"
-            s3_path = f"{base_path}/mistral/{output_filename}"
+            markdown_filename = f"mistral_ocr_{timestamp}.md"
+            s3_path = f"{base_path}/mistral/{markdown_filename}"
             
-            # Upload to S3
-            self.logger.info("Uploading processed content to S3...")
-            try:
-                s3_obj.upload_text(json.dumps(structured_content, indent=2), s3_path)
-                self.logger.info(f"Successfully uploaded to {s3_path}")
-            except Exception as e:
-                self.logger.error(f"Failed to upload to S3: {str(e)}")
-                raise
+            self.logger.info("Uploading results to S3...")
+            s3_obj.upload_text(markdown_content, s3_path)
             
-            # Prepare metadata
+            # Step 6: Prepare and return metadata
             metadata = {
                 "timestamp": datetime.now().isoformat(),
                 "parser": "mistral_parser",
-                "processing_time": f"{time.time() - start_total:.2f}s",
+                "processing_time": f"{time.time() - start_time:.2f}s",
                 "table_count": table_count,
-                "page_count": len(ocr_response.pages)
+                "page_count": page_count,
+                "markdown_file": s3_path
             }
             
+            self.logger.info(f"PDF processing completed in {time.time() - start_time:.2f} seconds")
             return s3_path, metadata
             
         except Exception as e:
