@@ -1,0 +1,44 @@
+[
+  {
+    "success": true,
+    "chunker": "fixed_size",
+    "num_chunks": 242,
+    "timing": {
+      "extract": 1.0426738262176514,
+      "setup": 0.7510859966278076,
+      "process": 37.68052887916565,
+      "query": 0.8757760524749756,
+      "total": 40.35050392150879
+    },
+    "query": "What was NVIDIA's revenue in the most recent quarter?",
+    "response": "NVIDIA's revenue in the most recent quarter (Three Months Ended Oct 27, 2024) was $35,082 million (Document 3 & 4).\n"
+  },
+  {
+    "success": true,
+    "chunker": "sliding_window",
+    "num_chunks": 969,
+    "timing": {
+      "extract": 1.1813240051269531,
+      "setup": 0.029974937438964844,
+      "process": 196.0085039138794,
+      "query": 0.684481143951416,
+      "total": 197.90572094917297
+    },
+    "query": "What was NVIDIA's revenue in the most recent quarter?",
+    "response": "NVIDIA's revenue in the most recent quarter (Three Months Ended Oct 27, 2024) was $35,082 million.\n"
+  },
+  {
+    "success": true,
+    "chunker": "semantic",
+    "num_chunks": 329,
+    "timing": {
+      "extract": 1.3322830200195312,
+      "setup": 0.03928208351135254,
+      "process": 52.042048931121826,
+      "query": 0.7313528060913086,
+      "total": 54.1523756980896
+    },
+    "query": "What was NVIDIA's revenue in the most recent quarter?",
+    "response": "NVIDIA's revenue in the most recent quarter (Three Months Ended Oct 27, 2024) was $35,082 million (Document 1 & 3).\n"
+  }
+]

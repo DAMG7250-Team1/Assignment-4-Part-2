@@ -1,3 +1,4 @@
+# Frontend components package initialization
 """
-Frontend components package.
+This package contains reusable Streamlit components for the NVIDIA RAG pipeline.
 """ 

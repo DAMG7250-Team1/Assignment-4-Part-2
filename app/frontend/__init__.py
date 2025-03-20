@@ -1,3 +1,4 @@
+# Frontend package initialization
 """
-Frontend package for the NVIDIA Report Analysis application.
+This package contains Streamlit frontend components for the NVIDIA RAG pipeline.
 """ 

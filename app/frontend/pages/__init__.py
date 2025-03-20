@@ -1,3 +1,4 @@
+# Frontend pages package initialization
 """
-Frontend pages package.
+This package contains Streamlit pages for the NVIDIA RAG pipeline.
 """ 
