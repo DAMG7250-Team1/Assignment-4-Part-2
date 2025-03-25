@@ -1,3 +1,8 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.py[cod]
@@ -22,15 +27,27 @@ wheels/
 
 # Virtual Environment
 venv/
-ENV/
 env/
-.env
+ENV/
+.venv/
+.env/
+.ENV/
 
-# IDE
+# Airflow
+airflow.db
+airflow.cfg
+webserver_config.py
+logs/
+airflow-webserver.pid
+airflow-worker.pid
+
+# IDEs and editors
 .idea/
 .vscode/
 *.swp
 *.swo
+*.sublime-workspace
+*.sublime-project
 
 # Logs
 *.log
@@ -52,3 +69,15 @@ chromadb/
 # AWS
 .aws/
 aws.config
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+coverage.xml
+*.cover

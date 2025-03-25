@@ -1,17 +1,36 @@
 # NVIDIA Financial Reports Analysis
 
-This project provides a comprehensive analysis of NVIDIA's financial reports using advanced NLP and RAG (Retrieval-Augmented Generation) techniques.
+A Retrieval-Augmented Generation (RAG) pipeline for NVIDIA financial reports, enabling intelligent question answering about NVIDIA's financial performance and business operations.
 
 ## Features
 
-- Web scraping of NVIDIA's quarterly reports
-- PDF processing using Mistral OCR
-- Document chunking with multiple strategies
-- Vector storage using Pinecone
-- Interactive query interface with Streamlit
-- AWS S3 integration for document storage
+- **Automated Data Collection**: Downloads NVIDIA financial reports from their investor relations website
+- **Advanced Document Processing**: Processes PDF reports with multiple chunking strategies
+- **Flexible Vector Storage**: Supports multiple vector databases (ChromaDB, Pinecone)
+- **Semantic Search**: Retrieves relevant information from reports based on user queries
+- **Intelligent Response Generation**: Uses advanced LLMs (OpenAI, Anthropic, Mistral) to generate insightful responses
+- **Interactive UI**: Streamlit-based interface for easy interaction
 
-## Setup
+## Architecture
+
+The pipeline consists of several key components:
+
+1. **Document Processor**: Ingests documents, splits them into chunks, and stores them in a vector database
+2. **Chunking Strategies**: Implements various strategies (fixed-size, sliding window, semantic) for document chunking
+3. **Vector Stores**: Support for different vector databases (ChromaDB, Pinecone)
+4. **Retriever**: Retrieves relevant document chunks based on queries, with support for MMR reranking
+5. **Generator**: Generates responses using various LLM providers (OpenAI, Anthropic, Mistral)
+6. **RAG Pipeline**: Orchestrates the entire process from document ingestion to response generation
+
+## Installation
+
+### Prerequisites
+
+- Python 3.8+
+- pip package manager
+- API keys for the services you plan to use (OpenAI, Anthropic, Mistral, Pinecone)
+
+### Setup
 
 1. Clone the repository:
 ```bash
@@ -21,8 +40,13 @@ cd Assignment-4-Part-2
 
 2. Create and activate a virtual environment:
 ```bash
+# Using venv
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Using conda
+conda create -n nvidia-rag python=3.8
+conda activate nvidia-rag
 ```
 
 3. Install dependencies:
@@ -85,4 +109,4 @@ See `.env.template` for required environment variables:
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
